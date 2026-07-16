@@ -1,0 +1,18 @@
+# Shell history
+.bash_history
+.bash_logout
+.bashrc
+.profile
+.sudo_as_admin_successful
+
+# SSH keys / known hosts
+.ssh/
+
+# System caches / runtime
+.cache/
+.local/
+.config/
+.gnupg/
+
+# Warp
+.warp/
