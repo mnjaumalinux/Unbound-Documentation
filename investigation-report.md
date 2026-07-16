@@ -24,17 +24,20 @@ UFW enabled and persistent (survives reboots). Applied via `sudo ufw --force ena
 
 ---
 
-## Device Investigation: `102.219.209.234`
+## Investigation: `102.219.209.234` — MikroTik NAT Gateway
+
+> **Correction from initial assessment:** `102.219.209.234` is a **MikroTik router performing NAT** for a downstream client network. All queries attributed to this IP are from multiple end-user devices behind the NAT. It is an authorised gateway — not a rogue device. Investigation findings below have been updated accordingly.
 
 ### Traffic Profile
 
 | Metric | Value |
 |--------|-------|
+| Source | MikroTik NAT gateway (multiple clients masked behind single IP) |
 | Total queries (20 min) | 24,731 |
-| Unique domains queried | 1,972 |
+| Unique domains queried | 1,972 (across all NAT'd clients) |
 | Avg QPS | ~1,200/min |
 | Peak QPS | 1,593/min (17:01) |
-| Pattern | Sustained, multi-threaded — automated |
+| Pattern | Normal aggregate traffic for a multi-user NAT network |
 
 ### Queries per Minute
 
@@ -53,22 +56,22 @@ UFW enabled and persistent (survives reboots). Applied via `sudo ufw --force ena
 
 ### Confirmed Suspicious Behaviours
 
-#### 1. Automated DoH Provider Resolution (DNS Bypass Attempts)
+#### 1. DoH Provider Resolution (DNS Bypass Attempts from NAT clients)
 
-The device continuously attempts to resolve DoH provider hostnames to establish encrypted DNS sessions that would bypass this resolver entirely. All are blocked by `local-zone: always_nxdomain`.
+One or more devices **behind the MikroTik NAT** are running applications with embedded DoH clients attempting to bypass this resolver. All provider hostnames are blocked by `local-zone: always_nxdomain` on resolve01.
 
 | Domain | Queries | Result | Pattern |
 |--------|---------|--------|---------|
-| `dns.adguard.com` | 84 | NXDOMAIN (blocked) | Every ~20s, up to 16 concurrent queries at 17:01 |
-| `cloudflare-dns.com` | 43 | NXDOMAIN (blocked) | Burst of 15 queries in <1 second at 17:00 |
-| `dns.google` | Multiple | **NOERROR** (not yet blocked) | Resolves successfully — action required |
+| `dns.adguard.com` | 84 | NXDOMAIN (blocked) | Every ~20s — automated app retry (AdGuard for Android / VPN app) |
+| `cloudflare-dns.com` | 43 | NXDOMAIN (blocked) | Burst of 15 queries in <1s — multiple apps retrying simultaneously |
+| `dns.google` | Multiple | NOERROR (not blocked — per operator decision) | Google DNS left resolvable |
 
-**Assessment:** This is **not human-initiated**. The retry frequency, burst patterns across 20 threads, and 20-minute persistence indicate an automated DoH client embedded in a mobile application (likely AdGuard for Android or a VPN app with built-in DoH fallback).
+**Assessment:** Originating from one or more end-user devices behind the MikroTik. The high retry rate and multi-thread bursts indicate **automated DoH fallback logic** in a mobile app (likely AdGuard for Android, a VPN client, or browser with DoH enabled). The MikroTik is the correct enforcement point for blocking this traffic.
 
 #### 2. Novel DoH Endpoint Discovery
 
-The device also resolves Alibaba Cloud load balancer endpoints used for DoH:
-- `nlb-uo231cms7bji7g2doh.ap-southeast-1.nlb.aliyuncsslbintl.com` — queried 4× and **resolving successfully (NOERROR)**. The domain contains `doh` in the NLB name — this is an Alibaba Cloud-hosted DoH endpoint being used by an app to bypass the resolver.
+A client behind the MikroTik resolves Alibaba Cloud load balancer endpoints used for DoH:
+- `nlb-uo231cms7bji7g2doh.ap-southeast-1.nlb.aliyuncsslbintl.com` — queried 4× (NOERROR). The `doh` in the NLB name confirms this is an Alibaba Cloud-hosted DoH endpoint used by an app to bypass the resolver.
 
 **Recommended block:**
 ```
@@ -82,15 +85,15 @@ local-zone: "aliyuncsslbintl.com." always_nxdomain
 | `www.goooooooooooooooooooooooooooooooooooooooooooooooooooooooooogle.com.` | REFUSED | Classic amplification vector test — oversized domain |
 | `216.58.202.4.in-addr.arpa.` | REFUSED/NXDOMAIN | Reverse DNS leak test (Google IP) |
 
-These two queries were sent together at **17:00:36** and repeated at **17:01:30** — suggesting an automated test cycle.
+These queries were sent at **17:00:36** and repeated at **17:01:30** — an automated test cycle from a client behind the NAT running a network diagnostic/security tool. Resolver correctly returned REFUSED.
 
 #### 4. RFC-1918 Reverse DNS Discovery
 
-Repeated PTR queries for private IP ranges:
+Repeated PTR queries for private IP ranges from NAT clients:
 - `192.168.1.3`, `192.168.100.21`, `192.168.100.51` — reverse lookups for local network hosts
-- `lb._dns-sd._udp.0.100.168.192.in-addr.arpa` — DNS Service Discovery (DNS-SD) multicast probing via unicast DNS
+- `lb._dns-sd._udp.0.100.168.192.in-addr.arpa` — DNS Service Discovery (DNS-SD) probing via unicast DNS
 
-This indicates the device is mapping the local network topology using DNS, consistent with a VPN or MDM application scanning the network.
+This is **normal behaviour** for devices on the MikroTik's LAN (mDNS/DNS-SD service discovery is common on Android/iOS/macOS). No action required.
 
 #### 5. Long/Encoded Domain Names (Potential Data Exfiltration Watch)
 
@@ -106,51 +109,63 @@ Assessment: These are long but **structurally legitimate** CDN/ad-network patter
 
 ### Risk Assessment
 
-| Behaviour | Risk | Status |
-|-----------|------|--------|
-| AdGuard DoH bypass | High | Blocked (NXDOMAIN) |
-| Cloudflare DoH bypass | High | Blocked (NXDOMAIN) |
-| `dns.google` DoH bypass | High | **Still resolving — action needed** |
-| Alibaba DoH endpoint | High | **Still resolving — action needed** |
-| Amplification probes | Medium | Blocked (REFUSED by access-control) |
-| Local network scanning (PTR/DNS-SD) | Medium | No impact on resolver — monitor |
-| Long domain names | Low | Legitimate CDN — no action |
+| Behaviour | Source | Risk | Status |
+|-----------|--------|------|--------|
+| AdGuard DoH bypass | Client(s) behind MikroTik | High | Blocked at resolver (NXDOMAIN) |
+| Cloudflare DoH bypass | Client(s) behind MikroTik | High | Blocked at resolver (NXDOMAIN) |
+| `dns.google` resolution | Client(s) behind MikroTik | Low | Allowed per operator decision |
+| Alibaba Cloud DoH endpoint | Client(s) behind MikroTik | High | Resolving — block at MikroTik or resolver |
+| Amplification probes | Client behind MikroTik | Medium | Blocked (REFUSED by access-control) |
+| PTR/DNS-SD queries | Normal LAN device behaviour | Low | No action needed |
+| Long domain names | Normal CDN patterns | Low | No action needed |
 
 ---
 
 ## Recommended Next Actions
 
-### Immediate (DNS resolver level)
+### 1. MikroTik router — enforce DNS and block DoT (highest priority)
 
-Add to `/etc/unbound/unbound.conf.d/fixes.conf`:
+Apply these rules on the MikroTik to intercept all client DNS and block DoT:
 
-```yaml
-local-zone: "dns.google." always_nxdomain
+```routeros
+# Force all client DNS queries to resolve01
+/ip firewall nat
+add chain=dstnat protocol=udp dst-port=53 src-address=!102.219.211.211 \
+    action=dst-nat to-addresses=102.219.211.211 comment="Force DNS to resolve01"
+add chain=dstnat protocol=tcp dst-port=53 src-address=!102.219.211.211 \
+    action=dst-nat to-addresses=102.219.211.211 comment="Force DNS to resolve01 TCP"
+
+# Block outbound DNS-over-TLS (port 853)
+/ip firewall filter
+add chain=forward protocol=tcp dst-port=853 action=drop comment="Block DoT TCP"
+add chain=forward protocol=udp dst-port=853 action=drop comment="Block DoT UDP"
+
+# Block outbound DoH to known provider IPs
+add chain=forward protocol=tcp dst-address=1.1.1.1 dst-port=443 action=drop comment="Block Cloudflare DoH"
+add chain=forward protocol=tcp dst-address=1.0.0.1 dst-port=443 action=drop comment="Block Cloudflare DoH"
+add chain=forward protocol=tcp dst-address=8.8.8.8 dst-port=443 action=drop comment="Block Google DoH"
+add chain=forward protocol=tcp dst-address=8.8.4.4 dst-port=443 action=drop comment="Block Google DoH"
+add chain=forward protocol=tcp dst-address=9.9.9.9 dst-port=443 action=drop comment="Block Quad9 DoH"
+```
+
+### 2. Resolver level (optional, additional hardening)
+
+Add to `/etc/unbound/unbound.conf.d/fixes.conf` if Alibaba DoH blocking is desired:
+
+```
 local-zone: "aliyuncsslbintl.com." always_nxdomain
 ```
 
-### Network level (upstream gateway/router)
+### 3. Client identification
 
+To identify which client behind the MikroTik is generating DoH bypass traffic:
+```routeros
+# Enable connection tracking logging on MikroTik for port 853
+/ip firewall filter
+add chain=forward protocol=tcp dst-port=853 action=log log-prefix="DoT-attempt" \
+    comment="Log DoT attempts for client identification"
 ```
-# Block outbound DoT from all clients
-iptables -I FORWARD -p tcp --dport 853 -j REJECT
-iptables -I FORWARD -p udp --dport 853 -j REJECT
-
-# Block outbound DoH (HTTPS to known DoH IPs)
-# Cloudflare DoH: 1.1.1.1, 1.0.0.1
-iptables -I FORWARD -p tcp -d 1.1.1.1 --dport 443 -j REJECT
-iptables -I FORWARD -p tcp -d 1.0.0.1 --dport 443 -j REJECT
-# Google DoH: 8.8.8.8, 8.8.4.4
-iptables -I FORWARD -p tcp -d 8.8.8.8 --dport 443 -j REJECT
-iptables -I FORWARD -p tcp -d 8.8.4.4 --dport 443 -j REJECT
-```
-
-### Device level
-
-Identify the device at `102.219.209.234` (MAC lookup on DHCP server), locate it physically, and:
-1. Remove AdGuard/DNS-changing VPN apps
-2. Disable private DNS settings (`Settings > Network > Private DNS > Off` on Android)
-3. Apply MDM policy to prevent DNS override if enterprise-managed
+Then check `/log` on the MikroTik to see the source IP of the DoH-bypassing client.
 
 ---
 
