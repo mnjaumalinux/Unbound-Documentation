@@ -224,6 +224,43 @@ systemctl is-enabled systemd-networkd unbound frr ssh.socket
 
 ---
 
+## Kernel Tuning
+
+Socket buffer limits must be raised to allow Unbound's `so-rcvbuf/so-sndbuf: 4m` to take effect.
+Configured persistently in `/etc/sysctl.d/99-unbound.conf`:
+
+| Parameter | Value | Reason |
+|-----------|-------|--------|
+| `net.core.rmem_max` | 4194304 | Allow 4MB socket receive buffer |
+| `net.core.wmem_max` | 4194304 | Allow 4MB socket send buffer |
+
+Apply without reboot: `sudo sysctl -p /etc/sysctl.d/99-unbound.conf`
+
+---
+
+## Logging
+
+Unbound logs operational events via syslog (journald). Query-level logging is disabled for performance.
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| `verbosity` | 1 | Errors, warnings, start/stop |
+| `log-queries` | no | Disabled — enable for debugging only |
+| `log-replies` | no | Disabled — enable for debugging only |
+| `logfile` | *(unset)* | Defaults to syslog / journald |
+
+View live logs:
+```bash
+sudo journalctl -u unbound -f
+```
+
+> **Known harmless warnings:** The `subnetcache` module logs that `serve-expired` and `prefetch`
+> do not apply to ECS-cached entries. Both features work normally for all other cache entries.
+> Rate-limit notices (`ratelimit exceeded`, `ip_ratelimit exceeded`) are informational and confirm
+> the abuse-protection is active.
+
+---
+
 ## Boot Order
 
 On reboot, services start in this order:
