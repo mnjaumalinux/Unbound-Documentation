@@ -1,0 +1,20 @@
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 102.219.210.213 22/tcp on eno1 ALLOW IN    Anywhere                   # SSH management
+[ 2] 102.219.211.211 53/udp     ALLOW IN    127.0.0.0/8                # DNS loopback
+[ 3] 102.219.211.211 53/tcp     ALLOW IN    127.0.0.0/8                # DNS loopback TCP
+[ 4] 102.219.211.211 53/udp     ALLOW IN    102.219.208.0/22           # DNS client subnet 1
+[ 5] 102.219.211.211 53/tcp     ALLOW IN    102.219.208.0/22           # DNS client subnet 1 TCP
+[ 6] 102.219.211.211 53/udp     ALLOW IN    102.213.48.0/22            # DNS client subnet 2
+[ 7] 102.219.211.211 53/tcp     ALLOW IN    102.213.48.0/22            # DNS client subnet 2 TCP
+[ 8] 102.219.211.211 53/udp     ALLOW IN    102.209.56.0/22            # DNS client subnet 3
+[ 9] 102.219.211.211 53/tcp     ALLOW IN    102.209.56.0/22            # DNS client subnet 3 TCP
+[10] Anywhere                   DENY IN     23.92.30.7                 # External probe IP blocked
+[11] Anywhere                   DENY IN     10.250.70.253              # Unauthorized internal probe blocked
+[12] 853/tcp                    DENY OUT    Anywhere                   (out) # Block outbound DoT
+[13] 853/udp                    DENY OUT    Anywhere                   (out) # Block outbound DoT UDP
+[14] 853/tcp (v6)               DENY OUT    Anywhere (v6)              (out) # Block outbound DoT
+[15] 853/udp (v6)               DENY OUT    Anywhere (v6)              (out) # Block outbound DoT UDP
+
