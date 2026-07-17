@@ -16,3 +16,9 @@
 
 # Warp
 .warp/
+
+# Go build workspace
+go/
+
+# Shell
+.lesshst
