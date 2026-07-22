@@ -2314,7 +2314,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "builder",
-          "expr": "sum by(dns) (sum_over_time(count_over_time({dns=\"reply\"} [$__interval])[$__range:$__interval]))",
+          "expr": "sum by(dns) (count_over_time({dns=\"reply\"} [$__range]))",
           "legendFormat": "",
           "queryType": "instant",
           "refId": "A"
@@ -2325,7 +2325,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "builder",
-          "expr": "sum by(dns) (sum_over_time(count_over_time({dns=\"block\"} [$__interval])[$__range:$__interval]))",
+          "expr": "sum by(dns) (count_over_time({dns=\"block\"} [$__range]))",
           "hide": false,
           "legendFormat": "",
           "queryType": "instant",
@@ -2841,7 +2841,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "builder",
-          "expr": "sum by(domain, client) (sum_over_time(count_over_time({dns=\"reply\"} | pattern `<_> <_> <_> <client> <domain> <_> <_> <_> <_> <_> <_>` [$__interval])[$__range:$__interval]))",
+          "expr": "sum by(domain, client) (count_over_time({dns=\"reply\"} [$__range]))",
           "queryType": "instant",
           "refId": "A"
         }
@@ -2992,7 +2992,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "builder",
-          "expr": "sum by(domain) (sum_over_time(count_over_time({dns=\"block\"} | pattern `<_> <_> <_> <domain> <_> <_> <_> <_> <_>` [$__interval])[$__range:$__interval]))",
+          "expr": "sum by(domain) (count_over_time({dns=\"block\"} [$__range]))",
           "hide": false,
           "queryType": "instant",
           "refId": "A"
